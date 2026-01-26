@@ -626,14 +626,26 @@ def train(attn_implementation="flash_attention_2"):
     use_quantization = (is_moe_model or is_large_model) and not is_fp8_model
     
     # 量化配置：仅对非FP8的大模型使用，小模型（如4B）使用BF16/FP16
+    # 从环境变量读取量化位数，默认为 8-bit
+    quantization_bits = int(os.environ.get("QUANTIZATION_BITS", "8"))
+    rank0_print(f"Quantization bits from env: {quantization_bits}")
+    
     if use_quantization:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            # 使用 bfloat16 作为计算类型，与训练参数 (training_args.bf16) 保持一致
-            bnb_4bit_compute_dtype=torch.bfloat16 
-        )
+        if quantization_bits == 4:
+            rank0_print("Using 4-bit quantization (NF4)")
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.bfloat16 
+            )
+        else:
+            # 默认使用 8-bit 量化
+            rank0_print("Using 8-bit quantization")
+            quantization_config = BitsAndBytesConfig(
+                load_in_8bit=True,
+                llm_int8_threshold=6.0,
+            )
     
     # Load model
     if is_moe_model:
@@ -647,8 +659,8 @@ def train(attn_implementation="flash_attention_2"):
                 torch_dtype=torch.bfloat16,
             )
         else:
-            # MoE模型（如qwen3-vl-30B-A3B）使用4-bit量化配置以节省内存
-            rank0_print(f"Loading MoE model with 4-bit quantization: {model_args.model_name_or_path}")
+            # MoE模型（如qwen3-vl-30B-A3B）使用量化配置以节省内存
+            rank0_print(f"Loading MoE model with {quantization_bits}-bit quantization: {model_args.model_name_or_path}")
             model = Qwen3VLMoeForConditionalGeneration.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
@@ -668,7 +680,7 @@ def train(attn_implementation="flash_attention_2"):
                 torch_dtype=torch.bfloat16,
             )
         elif use_quantization:
-            rank0_print(f"Loading large Qwen3 model with 4-bit quantization: {model_args.model_name_or_path}")
+            rank0_print(f"Loading large Qwen3 model with {quantization_bits}-bit quantization: {model_args.model_name_or_path}")
             model = Qwen3VLForConditionalGeneration.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
@@ -682,7 +694,7 @@ def train(attn_implementation="flash_attention_2"):
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
                 attn_implementation=attn_implementation,
-                dtype=(torch.bfloat16 if training_args.bf16 else None),
+                torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
             )
         data_args.model_type = "qwen3vl"
     elif "qwen2.5" in model_args.model_name_or_path.lower():
@@ -690,7 +702,7 @@ def train(attn_implementation="flash_attention_2"):
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
             attn_implementation=attn_implementation,
-            dtype=(torch.bfloat16 if training_args.bf16 else None),
+            torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
         )
         data_args.model_type = "qwen2.5vl"
     else:
@@ -698,7 +710,7 @@ def train(attn_implementation="flash_attention_2"):
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
             attn_implementation=attn_implementation,
-            dtype=(torch.bfloat16 if training_args.bf16 else None),
+            torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
         )
         data_args.model_type = "qwen2vl"
 
@@ -734,8 +746,16 @@ def train(attn_implementation="flash_attention_2"):
     )
 
     if training_args.lora_enable:
-        from peft import LoraConfig, get_peft_model, TaskType
+        from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
         rank0_print("LoRA enabled")
+
+        # 对于量化模型（4-bit 或 8-bit），需要先调用 prepare_model_for_kbit_training
+        if use_quantization:
+            rank0_print("Preparing quantized model for k-bit training...")
+            model = prepare_model_for_kbit_training(
+                model,
+                use_gradient_checkpointing=training_args.gradient_checkpointing,
+            )
 
         for p in model.parameters():
             p.requires_grad = False
