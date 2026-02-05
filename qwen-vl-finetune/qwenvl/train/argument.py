@@ -23,6 +23,11 @@ class DataArguments:
     video_max_pixels: int = field(default=1024 * 28 * 28)
     video_min_pixels: int = field(default=256 * 28 * 28)
     video_fps: float = 2
+    # Browser-use dataset specific arguments
+    csv_path: Optional[str] = field(default=None)
+    image_dir: Optional[str] = field(default="./images")
+    image_ids_file: Optional[str] = field(default=None)
+    output_jsonl: Optional[str] = field(default=None)
 
 
 @dataclass
