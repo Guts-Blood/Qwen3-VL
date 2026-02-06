@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Download UI-TARS-7B-SFT model from HuggingFace
+Download UI-TARS-1.5-7B model from HuggingFace
+
+UI-TARS-1.5-7B is based on Qwen2.5-VL architecture.
 """
 
 import os
@@ -11,8 +13,8 @@ from tqdm import tqdm
 
 
 def download_model(
-    repo_id: str = "ByteDance-Seed/UI-TARS-7B-SFT",
-    local_dir: str = "./models/UI-TARS-7B-SFT",
+    repo_id: str = "ByteDance-Seed/UI-TARS-1.5-7B",
+    local_dir: str = "./models/UI-TARS-1.5-7B",
     use_auth_token: bool = False,
 ):
     """
@@ -75,7 +77,7 @@ def download_model(
         print(f"\n❌ Error downloading model: {e}")
         print("\n💡 Troubleshooting:")
         print("   1. Check your internet connection")
-        print("   2. Verify the repository exists: https://huggingface.co/ByteDance-Seed/UI-TARS-7B-SFT")
+        print("   2. Verify the repository exists: https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B")
         print("   3. If it's a gated model, run with --auth flag and login")
         print("   4. Try: huggingface-cli login")
         sys.exit(1)
@@ -85,19 +87,19 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Download UI-TARS-7B-SFT model from HuggingFace"
+        description="Download UI-TARS-1.5-7B model from HuggingFace"
     )
     parser.add_argument(
         "--repo_id",
         type=str,
-        default="ByteDance-Seed/UI-TARS-7B-SFT",
-        help="HuggingFace repository ID (default: ByteDance-Seed/UI-TARS-7B-SFT)"
+        default="ByteDance-Seed/UI-TARS-1.5-7B",
+        help="HuggingFace repository ID (default: ByteDance-Seed/UI-TARS-1.5-7B)"
     )
     parser.add_argument(
         "--local_dir",
         type=str,
-        default="./models/UI-TARS-7B-SFT",
-        help="Local directory to save the model (default: ./models/UI-TARS-7B-SFT)"
+        default="./models/UI-TARS-1.5-7B",
+        help="Local directory to save the model (default: ./models/UI-TARS-1.5-7B)"
     )
     parser.add_argument(
         "--auth",

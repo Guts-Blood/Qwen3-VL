@@ -231,6 +231,16 @@ def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: st
         trainer._save(output_dir, state_dict=cpu_state_dict)  # noqa
 
 
+def get_llm_module(model):
+    """Get the language model module, handling both Qwen2VL (model.model) and Qwen3VL (model.language_model)."""
+    if hasattr(model, 'language_model'):
+        return model.language_model
+    elif hasattr(model, 'model'):
+        return model.model
+    else:
+        raise AttributeError("Cannot find language model: neither 'language_model' nor 'model' attribute found")
+
+
 def set_model(model_args, model):
     if model_args.tune_mm_vision:
         for n, p in model.visual.named_parameters():
@@ -246,12 +256,14 @@ def set_model(model_args, model):
         for n, p in model.visual.merger.named_parameters():
             p.requires_grad = False
 
+    # Handle both Qwen2VL (model.model) and Qwen3VL (model.language_model)
+    llm_module = get_llm_module(model)
     if model_args.tune_mm_llm:
-        for n, p in model.language_model.named_parameters():
+        for n, p in llm_module.named_parameters():
             p.requires_grad = True
         model.lm_head.requires_grad = True
     else:
-        for n, p in model.language_model.named_parameters():
+        for n, p in llm_module.named_parameters():
             p.requires_grad = False
         model.lm_head.requires_grad = False
 
@@ -815,7 +827,9 @@ def train(attn_implementation="flash_attention_2"):
                 device_map="auto",
             )
         data_args.model_type = "qwen3vl"
-    elif "qwen2.5" in model_args.model_name_or_path.lower():
+    elif "qwen2.5" in model_path_lower or "ui-tars-1.5" in model_path_lower:
+        # UI-TARS-1.5 is based on Qwen2.5-VL architecture
+        rank0_print(f"Loading Qwen2.5-VL model: {model_args.model_name_or_path}")
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
@@ -1188,13 +1202,15 @@ def train(attn_implementation="flash_attention_2"):
     else:
         set_model(model_args, model)
 
+        # Print trainable parameters (handle both Qwen2VL and Qwen3VL structures)
+        llm_module = get_llm_module(model)
         if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
             model.visual.print_trainable_parameters()
-            model.model.print_trainable_parameters()
+            llm_module.print_trainable_parameters()
         elif not torch.distributed.is_initialized():
             # Single GPU or CPU training
             model.visual.print_trainable_parameters()
-            model.model.print_trainable_parameters()
+            llm_module.print_trainable_parameters()
         
         # =================================================================
         # 强制开启 Gradient Checkpointing（适用于 Zero3 CPU Offload）
